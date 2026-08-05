@@ -345,7 +345,11 @@
                 header: true,
                 dynamicTyping: true,
                 skipEmptyLines: true,
-                worker: true,          // keeps the UI responsive on million-row models
+                // Keeps the UI responsive on million-row models. Chrome throws SecurityError
+                // constructing a Worker from a file:// page, and PapaParse reports
+                // WORKERS_SUPPORTED=true regardless, then hangs with no callback — so when the
+                // file is opened by double-clicking, parse on the main thread instead.
+                worker: location.protocol !== 'file:',
                 complete: function(results) {
                     rawData = results.data || [];
 
