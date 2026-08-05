@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grade-Tonnage Browser Dashboard</title>
+    <!-- External Libraries via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --panel-bg: #ffffff;
+            --primary: #0d6efd;
+            --border: #dee2e6;
+            --text: #212529;
+            --muted: #6c757d;
+            --warn-bg: #fff3cd;
+            --warn-border: #ffe69c;
+            --warn-text: #664d03;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text);
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        h1, h2, h3 { margin-top: 0; }
+        h3.section {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--muted);
+            margin: 22px 0 12px;
+        }
+        .control-group {
+            margin-bottom: 14px;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+        }
+        select, input[type="file"], input[type="range"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 0.9rem;
+        }
+        .triple {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .hint {
+            font-size: 0.78rem;
+            color: var(--muted);
+            margin-top: 6px;
+            line-height: 1.4;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .metric-card {
+            background: #f1f3f5;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .metric-card .val {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: var(--primary);
+        }
+        .metric-card .sub {
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+        .metric-card .lbl {
+            font-size: 0.8rem;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+        #chart-container {
+            width: 100%;
+            height: 500px;
+        }
+        .notice {
+            background: var(--warn-bg);
+            border: 1px solid var(--warn-border);
+            color: var(--warn-text);
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 0.85rem;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+        .notice ul { margin: 6px 0 0; padding-left: 18px; }
+        #density-overrides table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        #density-overrides td {
+            padding: 3px 0;
+        }
+        #density-overrides td:first-child {
+            padding-right: 8px;
+            word-break: break-word;
+        }
+        #density-overrides input {
+            padding: 4px 6px;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>Grade-Tonnage &amp; Sensitivity Dashboard</h1>
+
+    <div class="container">
+        <!-- SIDEBAR CONTROLS -->
+        <div class="panel">
+            <h2>Data &amp; Controls</h2>
+
+            <div class="control-group">
+                <label for="csv-file">1. Select CSV File</label>
+                <input type="file" id="csv-file" accept=".csv,.txt">
+                <div class="hint" id="file-status"></div>
+            </div>
+
+            <div id="controls-panel" class="hidden">
+
+                <h3 class="section">Grade &amp; Domain</h3>
+                <div class="control-group">
+                    <label for="grade-col">Grade Column</label>
+                    <select id="grade-col"></select>
+                </div>
+
+                <div class="control-group">
+                    <label for="grade-unit">Grade Units</label>
+                    <select id="grade-unit">
+                        <option value="gpt">g/t</option>
+                        <option value="pct">%</option>
+                        <option value="ppm">ppm</option>
+                        <option value="ppb">ppb</option>
+                        <option value="none">unitless</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="domain-col">Domain / Category Column</label>
+                    <select id="domain-col"></select>
+                </div>
+
+                <div class="control-group">
+                    <label for="domain-val">Filter Domain</label>
+                    <select id="domain-val">
+                        <option value="ALL">-- All Domains --</option>
+                    </select>
+                </div>
+
+                <h3 class="section">Tonnage Source</h3>
+                <div class="control-group">
+                    <label for="tonnage-mode">Method</label>
+                    <select id="tonnage-mode">
+                        <option value="dims">Sub-block dimension columns &times; density</option>
+                        <option value="fixed">Fixed block size &times; density</option>
+                        <option value="volcol">Volume column &times; density</option>
+                        <option value="mass">Mass / tonnage column</option>
+                    </select>
+                </div>
+
+                <!-- mode: mass -->
+                <div class="control-group mode-mass">
+                    <label for="mass-col">Mass Column (tonnes)</label>
+                    <select id="mass-col"></select>
+                </div>
+
+                <!-- mode: volcol -->
+                <div class="control-group mode-volcol">
+                    <label for="vol-col">Volume Column (m&sup3;)</label>
+                    <select id="vol-col"></select>
+                </div>
+
+                <!-- mode: dims -->
+                <div class="control-group mode-dims">
+                    <label>Block Dimension Columns (X / Y / Z)</label>
+                    <div class="triple">
+                        <select id="dx-col"></select>
+                        <select id="dy-col"></select>
+                        <select id="dz-col"></select>
+                    </div>
+                    <div class="hint">Per-block sizes, so parent cells and sub-blocks are each given their true volume.</div>
+                </div>
+
+                <!-- mode: fixed -->
+                <div class="control-group mode-fixed">
+                    <label>Parent Cell Size (m: X / Y / Z)</label>
+                    <div class="triple">
+                        <input type="number" id="bx" min="0" step="any">
+                        <input type="number" id="by" min="0" step="any">
+                        <input type="number" id="bz" min="0" step="any">
+                    </div>
+                </div>
+
+                <div class="control-group mode-fixed">
+                    <label>Coordinate Columns (X / Y / Z)</label>
+                    <div class="triple">
+                        <select id="x-col"></select>
+                        <select id="y-col"></select>
+                        <select id="z-col"></select>
+                    </div>
+                    <div class="hint" id="spacing-hint"></div>
+                </div>
+
+                <h3 class="section">Density</h3>
+                <div class="control-group density-only">
+                    <label for="density-col">Density Column (t/m&sup3;)</label>
+                    <select id="density-col"></select>
+                </div>
+
+                <div class="control-group density-only">
+                    <label for="density-default">Default Density (t/m&sup3;)</label>
+                    <input type="number" id="density-default" value="2.70" min="0" step="0.01">
+                    <div class="hint">Used where the density column is blank or unset. Per-domain values below override this.</div>
+                </div>
+
+                <div class="control-group density-only" id="density-overrides"></div>
+
+                <h3 class="section">Evaluation</h3>
+                <div class="control-group">
+                    <label for="cutoff-slider">Cut-off Grade: <span id="cutoff-val">0.00</span></label>
+                    <input type="range" id="cutoff-slider" min="0" max="10" step="0.05" value="0">
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN DASHBOARD CONTENT -->
+        <div class="panel">
+            <div id="welcome-msg">
+                <h3>Getting Started</h3>
+                <p>Upload a CSV block model or assay export featuring spatial coordinates (X, Y, Z), grade variables
+                   (e.g. Au, Cu, Ni), and domain categories to generate real-time grade-tonnage curves.</p>
+                <p class="hint">Regular and sub-blocked models are both supported. If the file carries per-block
+                   dimension columns they are detected automatically; otherwise the parent cell size is inferred
+                   from the coordinate spacing and can be overridden.</p>
+            </div>
+
+            <div id="dashboard-content" class="hidden">
+                <div id="notice" class="notice hidden"></div>
+
+                <!-- METRICS HEADER -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="lbl">Blocks Above Cut-off</div>
+                        <div class="val" id="m-count">-</div>
+                        <div class="sub" id="m-count-sub"></div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="lbl">Tonnage</div>
+                        <div class="val" id="m-mass">-</div>
+                        <div class="sub" id="m-mass-sub"></div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="lbl">Avg Grade Above Cut-off</div>
+                        <div class="val" id="m-grade">-</div>
+                        <div class="sub" id="m-grade-sub"></div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="lbl">Contained Metal</div>
+                        <div class="val" id="m-metal">-</div>
+                        <div class="sub" id="m-metal-sub"></div>
+                    </div>
+                </div>
+
+                <!-- PLOTLY CHART -->
+                <div id="chart-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CLIENT-SIDE JAVASCRIPT LOGIC -->
+    <script>
+        // ---------------------------------------------------------------
+        // STATE
+        // ---------------------------------------------------------------
+        let rawData = [];
+        let numericCols = [];
+        let categoryCols = [];
+        let allCols = [];
+
+        // Cumulative model rebuilt only when data / filter / tonnage config changes.
+        // grades sorted descending; cumMass[k] / cumMetal[k] cover the first k blocks.
+        let model = null;
+        let domainDensities = {};   // domain value -> t/m3 override
+        let chartReady = false;
+        let notices = [];        // rebuilt on every model build
+        let configNotices = [];  // set when columns/geometry are configured; survive rebuilds
+
+        const GRADE_UNITS = {
+            gpt:  { label: 'g/t',  suffix: 'g/t'  },
+            pct:  { label: '%',    suffix: '%'    },
+            ppm:  { label: 'ppm',  suffix: 'ppm'  },
+            ppb:  { label: 'ppb',  suffix: 'ppb'  },
+            none: { label: '',     suffix: ''     }
+        };
+
+        const $ = id => document.getElementById(id);
+
+        // ---------------------------------------------------------------
+        // 1. FILE UPLOAD HANDLER (PapaParse)
+        // ---------------------------------------------------------------
+        $('csv-file').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            $('file-status').innerText = 'Parsing ' + file.name + '…';
+            resetState();
+
+            Papa.parse(file, {
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                worker: true,          // keeps the UI responsive on million-row models
+                complete: function(results) {
+                    rawData = results.data || [];
+
+                    if (rawData.length === 0) {
+                        $('file-status').innerText = 'No data rows found in ' + file.name + '.';
+                        return;
+                    }
+
+                    // Surface parse problems instead of silently modelling garbage.
+                    const errs = results.errors || [];
+                    const fatal = errs.filter(er => er.type !== 'FieldMismatch');
+                    $('file-status').innerText =
+                        rawData.length.toLocaleString() + ' rows loaded from ' + file.name +
+                        (errs.length ? ' (' + errs.length.toLocaleString() + ' parse warnings)' : '');
+
+                    inspectColumns(rawData);
+                    populateDropdowns();
+                    autoConfigureTonnage();
+
+                    $('controls-panel').classList.remove('hidden');
+                    $('welcome-msg').classList.add('hidden');
+                    $('dashboard-content').classList.remove('hidden');
+
+                    if (fatal.length) {
+                        pushNotice('CSV parsed with ' + fatal.length.toLocaleString() +
+                                   ' errors (first: "' + fatal[0].message + '" on row ' +
+                                   ((fatal[0].row || 0) + 1) + '). Results may be incomplete.');
+                    }
+                    rebuildAndRender();
+                },
+                error: function(err) {
+                    $('file-status').innerText = 'Failed to read file: ' + err.message;
+                }
+            });
+        });
+
+        function resetState() {
+            rawData = [];
+            model = null;
+            domainDensities = {};
+            notices = [];
+            configNotices = [];
+            chartReady = false;
+            Plotly.purge('chart-container');
+        }
+
+        // ---------------------------------------------------------------
+        // 2. COLUMN DATA TYPE INSPECTION
+        //    Samples many rows: a blank in row 0 must not mistype a column,
+        //    and numerically-coded domains still need to be offered as categories.
+        // ---------------------------------------------------------------
+        function inspectColumns(data) {
+            numericCols = [];
+            categoryCols = [];
+            allCols = [];
+            if (data.length === 0) return;
+
+            const SAMPLE = Math.min(data.length, 500);
+            const cols = new Set();
+            for (let i = 0; i < SAMPLE; i++) Object.keys(data[i]).forEach(c => cols.add(c));
+
+            cols.forEach(col => {
+                let seen = 0, numeric = 0;
+                const distinct = new Set();
+                for (let i = 0; i < SAMPLE && seen < 200; i++) {
+                    const v = data[i][col];
+                    if (v === null || v === undefined || v === '') continue;
+                    seen++;
+                    if (typeof v === 'number' && isFinite(v)) { numeric++; distinct.add(v); }
+                    else distinct.add(String(v));
+                }
+                allCols.push(col);
+                const isNumeric = seen > 0 && numeric / seen >= 0.9;
+                if (isNumeric) numericCols.push(col);
+                // Numeric columns with few distinct values are plausible domain codes.
+                if (!isNumeric || distinct.size <= 50) categoryCols.push(col);
+            });
+        }
+
+        // ---------------------------------------------------------------
+        // 3. POPULATE UI DROPDOWNS
+        //    Uses Option objects rather than innerHTML so column names and
+        //    category values from the CSV cannot inject markup.
+        // ---------------------------------------------------------------
+        function fillSelect(el, cols, placeholder) {
+            const previous = el.value;
+            el.innerHTML = '';
+            if (placeholder) el.appendChild(new Option(placeholder.text, placeholder.value));
+            cols.forEach(c => el.appendChild(new Option(c, c)));
+            if (previous && cols.indexOf(previous) !== -1) el.value = previous;
+        }
+
+        function findCol(cols, pattern) {
+            return cols.find(c => pattern.test(c)) || null;
+        }
+
+        function populateDropdowns() {
+            fillSelect($('grade-col'), numericCols);
+            fillSelect($('mass-col'), numericCols);
+            fillSelect($('vol-col'), numericCols);
+            fillSelect($('domain-col'), categoryCols, { text: '-- None --', value: 'NONE' });
+            fillSelect($('density-col'), numericCols, { text: '-- Use default / overrides --', value: 'NONE' });
+            ['dx-col', 'dy-col', 'dz-col'].forEach(id =>
+                fillSelect($(id), numericCols, { text: '--', value: 'NONE' }));
+            ['x-col', 'y-col', 'z-col'].forEach(id =>
+                fillSelect($(id), numericCols, { text: '--', value: 'NONE' }));
+
+            // Smart defaults if matching column names exist
+            const defaultGrade = findCol(numericCols, /^(au|cu|ni|ag|pb|zn|co|u3o8)$|grade|_gpt|_pct/i) || numericCols[0];
+            if (defaultGrade) $('grade-col').value = defaultGrade;
+            if (/pct|%|_cu|_ni|_pb|_zn/i.test(defaultGrade || '')) $('grade-unit').value = 'pct';
+
+            const defaultMass = findCol(numericCols, /ton|tonne|mass|weight/i);
+            if (defaultMass) $('mass-col').value = defaultMass;
+
+            const defaultVol = findCol(numericCols, /^vol|volume|_vol/i);
+            if (defaultVol) $('vol-col').value = defaultVol;
+
+            const defaultDensity = findCol(numericCols, /dens|^sg$|bulk|^bd$|tonnage_factor/i);
+            if (defaultDensity) $('density-col').value = defaultDensity;
+
+            $('x-col').value = findCol(numericCols, /^x$|xc|^xcentre|^xcenter|east/i) || 'NONE';
+            $('y-col').value = findCol(numericCols, /^y$|yc|^ycentre|^ycenter|north/i) || 'NONE';
+            $('z-col').value = findCol(numericCols, /^z$|zc|^zcentre|^zcenter|elev|rl/i) || 'NONE';
+
+            updateDomainFilterValues();
+        }
+
+        // ---------------------------------------------------------------
+        // 4. TONNAGE AUTO-CONFIGURATION
+        //    Prefer per-block dimension columns (the sub-block case). Failing
+        //    that, infer a regular parent cell from the coordinate lattice.
+        // ---------------------------------------------------------------
+        function autoConfigureTonnage() {
+            const dx = findCol(numericCols, /^(dx|xinc|xsize|xlength|xdim|blockx|dim_x)$/i);
+            const dy = findCol(numericCols, /^(dy|yinc|ysize|ylength|ydim|blocky|dim_y)$/i);
+            const dz = findCol(numericCols, /^(dz|zinc|zsize|zlength|zdim|blockz|dim_z)$/i);
+
+            if (dx && dy && dz) {
+                $('dx-col').value = dx;
+                $('dy-col').value = dy;
+                $('dz-col').value = dz;
+                $('tonnage-mode').value = 'dims';
+            } else if (findCol(numericCols, /^vol|volume$/i)) {
+                $('tonnage-mode').value = 'volcol';
+            } else if ($('x-col').value !== 'NONE') {
+                $('tonnage-mode').value = 'fixed';
+            } else {
+                $('tonnage-mode').value = 'mass';
+            }
+
+            inferBlockSize();
+            applyModeVisibility();
+        }
+
+        // Modal spacing of the unique coordinates on each axis.
+        function inferSpacing(colName) {
+            if (!colName || colName === 'NONE') return null;
+            const LIMIT = Math.min(rawData.length, 200000);
+            const uniq = new Set();
+            for (let i = 0; i < LIMIT && uniq.size < 20000; i++) {
+                const v = rawData[i][colName];
+                if (typeof v === 'number' && isFinite(v)) uniq.add(v);
+            }
+            const vals = [...uniq].sort((a, b) => a - b);
+            if (vals.length < 2) return null;
+
+            const counts = new Map();
+            let total = 0;
+            for (let i = 1; i < vals.length; i++) {
+                const d = Number((vals[i] - vals[i - 1]).toFixed(4));
+                if (d <= 0) continue;
+                counts.set(d, (counts.get(d) || 0) + 1);
+                total++;
+            }
+            if (total === 0) return null;
+
+            let size = null, best = 0;
+            counts.forEach((n, d) => { if (n > best) { best = n; size = d; } });
+            return { size: size, coverage: best / total, distinct: counts.size };
+        }
+
+        function inferBlockSize() {
+            const axes = [['x-col', 'bx'], ['y-col', 'by'], ['z-col', 'bz']];
+            const parts = [];
+            let irregular = false;
+            configNotices = [];
+
+            axes.forEach(([colId, inputId]) => {
+                const sp = inferSpacing($(colId).value);
+                if (!sp) return;
+                parts.push(colId.charAt(0).toUpperCase() + ' ' + sp.size + ' m');
+                // On a sub-blocked model the modal spacing is the *sub-block* size, not the
+                // parent cell. Prefilling it would silently understate tonnage several-fold,
+                // so leave the field blank and make the user supply the parent size.
+                if (sp.coverage < 0.9) irregular = true;
+                else if (!$(inputId).value) $(inputId).value = sp.size;
+            });
+
+            const hint = $('spacing-hint');
+            if (parts.length === 0) {
+                hint.innerText = 'Select coordinate columns to infer the cell size.';
+                return;
+            }
+            hint.innerText = 'Inferred spacing: ' + parts.join(', ') +
+                (irregular
+                    ? ' — uneven, so this is the smallest sub-block, not the parent cell. Enter the parent size yourself.'
+                    : '');
+
+            if (irregular) {
+                configNotices.push('Coordinate spacing is uneven, which usually means the model is sub-blocked. ' +
+                                   'A single fixed cell size will misstate tonnage — use per-block dimension ' +
+                                   'columns if the export has them.');
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // 5. UI WIRING
+        // ---------------------------------------------------------------
+        function applyModeVisibility() {
+            const mode = $('tonnage-mode').value;
+            ['mass', 'volcol', 'dims', 'fixed'].forEach(m => {
+                document.querySelectorAll('.mode-' + m).forEach(el =>
+                    el.classList.toggle('hidden', m !== mode));
+            });
+            // Density is irrelevant when tonnage is read straight from a mass column.
+            document.querySelectorAll('.density-only').forEach(el =>
+                el.classList.toggle('hidden', mode === 'mass'));
+        }
+
+        $('domain-col').addEventListener('change', function() {
+            updateDomainFilterValues();
+            rebuildAndRender();
+        });
+
+        $('tonnage-mode').addEventListener('change', function() {
+            applyModeVisibility();
+            rebuildAndRender();
+        });
+
+        ['x-col', 'y-col', 'z-col'].forEach(id => $(id).addEventListener('change', function() {
+            $('bx').value = ''; $('by').value = ''; $('bz').value = '';
+            inferBlockSize();
+            rebuildAndRender();
+        }));
+
+        ['grade-col', 'grade-unit', 'domain-val', 'mass-col', 'vol-col',
+         'dx-col', 'dy-col', 'dz-col', 'density-col'].forEach(id =>
+            $(id).addEventListener('change', rebuildAndRender));
+
+        ['bx', 'by', 'bz', 'density-default'].forEach(id =>
+            $(id).addEventListener('input', rebuildAndRender));
+
+        // Per-domain density inputs are created dynamically.
+        $('density-overrides').addEventListener('input', function(e) {
+            const key = e.target.getAttribute('data-domain');
+            if (key === null) return;
+            const v = parseFloat(e.target.value);
+            if (isFinite(v) && v > 0) domainDensities[key] = v;
+            else delete domainDensities[key];
+            rebuildAndRender();
+        });
+
+        // Dragging the cut-off only moves the marker and recomputes four numbers;
+        // the curve itself is untouched, so it is not re-plotted.
+        $('cutoff-slider').addEventListener('input', function(e) {
+            $('cutoff-val').innerText = parseFloat(e.target.value).toFixed(gradeDp());
+            renderCutoffOnly();
+        });
+
+        function updateDomainFilterValues() {
+            const domainCol = $('domain-col').value;
+            const sel = $('domain-val');
+            sel.innerHTML = '';
+            sel.appendChild(new Option('-- All Domains --', 'ALL'));
+
+            if (domainCol === 'NONE') {
+                renderDensityOverrides([]);
+                return;
+            }
+
+            // Keep 0 and false: a domain coded 0 is a real domain.
+            const uniqueVals = [...new Set(rawData.map(row => row[domainCol]))]
+                .filter(v => v !== null && v !== undefined && v !== '')
+                .sort((a, b) => (typeof a === 'number' && typeof b === 'number')
+                    ? a - b : String(a).localeCompare(String(b)));
+
+            uniqueVals.forEach(v => sel.appendChild(new Option(String(v), String(v))));
+            renderDensityOverrides(uniqueVals);
+        }
+
+        function renderDensityOverrides(values) {
+            const wrap = $('density-overrides');
+            wrap.innerHTML = '';
+            domainDensities = {};
+            if (values.length === 0 || values.length > 60) {
+                if (values.length > 60) {
+                    const p = document.createElement('div');
+                    p.className = 'hint';
+                    p.innerText = values.length + ' domains found — too many for per-domain density entry. ' +
+                                  'Use a density column instead.';
+                    wrap.appendChild(p);
+                }
+                return;
+            }
+
+            const label = document.createElement('label');
+            label.innerText = 'Density by Domain (t/m³)';
+            wrap.appendChild(label);
+
+            const table = document.createElement('table');
+            values.forEach(v => {
+                const tr = table.insertRow();
+                tr.insertCell().innerText = String(v);
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.min = '0';
+                input.step = '0.01';
+                input.placeholder = 'default';
+                input.setAttribute('data-domain', String(v));
+                tr.insertCell().appendChild(input);
+            });
+            wrap.appendChild(table);
+
+            const hint = document.createElement('div');
+            hint.className = 'hint';
+            hint.innerText = 'Blank falls back to the default density. A density column, where populated, wins over both.';
+            wrap.appendChild(hint);
+        }
+
+        // ---------------------------------------------------------------
+        // 6. TONNAGE / DENSITY RESOLUTION
+        // ---------------------------------------------------------------
+        function num(v) {
+            return (typeof v === 'number' && isFinite(v)) ? v : null;
+        }
+
+        function makeMassFn() {
+            const mode = $('tonnage-mode').value;
+            const domainCol = $('domain-col').value;
+            const densityCol = $('density-col').value;
+            const defaultDensity = parseFloat($('density-default').value);
+
+            const densityOf = row => {
+                if (densityCol !== 'NONE') {
+                    const d = num(row[densityCol]);
+                    if (d !== null && d > 0) return d;
+                }
+                if (domainCol !== 'NONE') {
+                    const o = domainDensities[String(row[domainCol])];
+                    if (o !== undefined) return o;
+                }
+                return (isFinite(defaultDensity) && defaultDensity > 0) ? defaultDensity : null;
+            };
+
+            if (mode === 'mass') {
+                const massCol = $('mass-col').value;
+                // No `|| 1` fallback: a blank mass is missing data, not one tonne.
+                return row => num(row[massCol]);
+            }
+
+            if (mode === 'volcol') {
+                const volCol = $('vol-col').value;
+                return row => {
+                    const v = num(row[volCol]);
+                    const d = densityOf(row);
+                    return (v === null || d === null) ? null : v * d;
+                };
+            }
+
+            if (mode === 'dims') {
+                const dxc = $('dx-col').value, dyc = $('dy-col').value, dzc = $('dz-col').value;
+                if (dxc === 'NONE' || dyc === 'NONE' || dzc === 'NONE') return () => null;
+                return row => {
+                    const a = num(row[dxc]), b = num(row[dyc]), c = num(row[dzc]);
+                    const d = densityOf(row);
+                    if (a === null || b === null || c === null || d === null) return null;
+                    return a * b * c * d;
+                };
+            }
+
+            // fixed
+            const vx = parseFloat($('bx').value), vy = parseFloat($('by').value), vz = parseFloat($('bz').value);
+            if (!(vx > 0 && vy > 0 && vz > 0)) return () => null;
+            const volume = vx * vy * vz;
+            return row => {
+                const d = densityOf(row);
+                return d === null ? null : volume * d;
+            };
+        }
+
+        // ---------------------------------------------------------------
+        // 7. MODEL BUILD  (sort once, then any cut-off is a binary search)
+        // ---------------------------------------------------------------
+        function buildModel() {
+            const gradeCol = $('grade-col').value;
+            const domainCol = $('domain-col').value;
+            const domainVal = $('domain-val').value;
+            const massFn = makeMassFn();
+
+            let inDomain = 0, skippedGrade = 0, skippedMass = 0;
+            const rows = [];
+
+            for (let i = 0; i < rawData.length; i++) {
+                const row = rawData[i];
+                if (domainCol !== 'NONE' && domainVal !== 'ALL' &&
+                    String(row[domainCol]) !== String(domainVal)) continue;
+                inDomain++;
+
+                // `null >= 0` is true in JS, so null grades must be excluded explicitly
+                // or they enter the model as zero-grade dilution.
+                const g = num(row[gradeCol]);
+                if (g === null) { skippedGrade++; continue; }
+
+                const m = massFn(row);
+                if (m === null || m <= 0) { skippedMass++; continue; }
+
+                rows.push([g, m]);
+            }
+
+            rows.sort((a, b) => b[0] - a[0]);   // descending grade
+
+            const n = rows.length;
+            const grades = new Float64Array(n);
+            const cumMass = new Float64Array(n + 1);
+            const cumMetal = new Float64Array(n + 1);
+            for (let i = 0; i < n; i++) {
+                grades[i] = rows[i][0];
+                cumMass[i + 1] = cumMass[i] + rows[i][1];
+                cumMetal[i + 1] = cumMetal[i] + rows[i][0] * rows[i][1];
+            }
+
+            return {
+                grades, cumMass, cumMetal, n,
+                inDomain, skippedGrade, skippedMass,
+                maxGrade: n ? grades[0] : 0,
+                minGrade: n ? grades[n - 1] : 0
+            };
+        }
+
+        // Count of blocks with grade >= cutoff (grades are sorted descending).
+        function countAbove(grades, cutoff) {
+            let lo = 0, hi = grades.length;
+            while (lo < hi) {
+                const mid = (lo + hi) >> 1;
+                if (grades[mid] >= cutoff) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
+        }
+
+        function queryCutoff(cutoff) {
+            const k = countAbove(model.grades, cutoff);
+            const mass = model.cumMass[k];
+            const metal = model.cumMetal[k];
+            return { count: k, mass, metal, avgGrade: mass > 0 ? metal / mass : 0 };
+        }
+
+        // Grade at a given percentile of the sorted-descending array.
+        function gradePercentile(p) {
+            if (model.n === 0) return 0;
+            const idx = Math.min(model.n - 1, Math.floor((1 - p) * model.n));
+            return model.grades[idx];
+        }
+
+        // ---------------------------------------------------------------
+        // 8. FORMATTING
+        // ---------------------------------------------------------------
+        function gradeDp() {
+            const span = model ? model.maxGrade : 1;
+            if (span >= 100) return 1;
+            if (span >= 1) return 2;
+            if (span >= 0.1) return 3;
+            return 4;
+        }
+
+        function fmt(v, dp) {
+            return v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
+        }
+
+        function fmtTonnes(t) {
+            if (t >= 1e6) return { val: fmt(t / 1e6, 2), unit: 'Mt' };
+            if (t >= 1e3) return { val: fmt(t / 1e3, 2), unit: 'kt' };
+            return { val: fmt(t, 0), unit: 't' };
+        }
+
+        // metal = sum(grade * tonnes), interpreted per the selected grade unit.
+        function fmtMetal(gradeTonnes) {
+            const unit = $('grade-unit').value;
+            if (unit === 'gpt' || unit === 'ppm') {
+                const oz = gradeTonnes / 31.1034768;          // grams -> troy ounces
+                const tonnesMetal = gradeTonnes / 1e6;        // grams -> tonnes
+                if (unit === 'gpt') {
+                    if (oz >= 1e6) return { val: fmt(oz / 1e6, 2), unit: 'Moz' };
+                    return { val: fmt(oz / 1e3, 1), unit: 'koz' };
+                }
+                const s = fmtTonnes(tonnesMetal);
+                return { val: s.val, unit: s.unit + ' metal' };
+            }
+            if (unit === 'ppb') {
+                const s = fmtTonnes(gradeTonnes / 1e9);
+                return { val: s.val, unit: s.unit + ' metal' };
+            }
+            if (unit === 'pct') {
+                const s = fmtTonnes(gradeTonnes / 100);
+                return { val: s.val, unit: s.unit + ' metal' };
+            }
+            return { val: fmt(gradeTonnes, 0), unit: 'grade·t' };
+        }
+
+        function pushNotice(msg) {
+            if (notices.indexOf(msg) === -1) notices.push(msg);
+        }
+
+        function renderNotices() {
+            const el = $('notice');
+            if (notices.length === 0) {
+                el.classList.add('hidden');
+                el.innerHTML = '';
+                return;
+            }
+            el.classList.remove('hidden');
+            el.innerHTML = '';
+            const ul = document.createElement('ul');
+            notices.forEach(n => {
+                const li = document.createElement('li');
+                li.innerText = n;
+                ul.appendChild(li);
+            });
+            el.appendChild(ul);
+        }
+
+        // ---------------------------------------------------------------
+        // 9. RENDER
+        // ---------------------------------------------------------------
+        function rebuildAndRender() {
+            // Sub-blocking warnings only matter while a single fixed cell size is in use.
+            notices = ($('tonnage-mode').value === 'fixed') ? configNotices.slice() : [];
+            model = buildModel();
+
+            if (model.skippedGrade > 0) {
+                pushNotice(model.skippedGrade.toLocaleString() + ' block(s) excluded: no numeric grade value.');
+            }
+            if (model.skippedMass > 0) {
+                pushNotice(model.skippedMass.toLocaleString() + ' block(s) excluded: tonnage could not be ' +
+                           'resolved (missing dimensions, volume, mass or density).');
+            }
+
+            if (model.n === 0) {
+                ['m-count', 'm-mass', 'm-grade', 'm-metal'].forEach(id => $(id).innerText = '-');
+                ['m-count-sub', 'm-mass-sub', 'm-grade-sub', 'm-metal-sub'].forEach(id => $(id).innerText = '');
+                pushNotice('No blocks available with the current column and filter selection.');
+                renderNotices();
+                Plotly.purge('chart-container');
+                chartReady = false;
+                return;
+            }
+
+            configureSlider();
+            renderCurve();
+            renderCutoffOnly();
+            renderNotices();
+        }
+
+        // Cut-off range runs to the 99th percentile rather than an arbitrary
+        // fraction of the maximum, so a single outlier block cannot stretch it.
+        function configureSlider() {
+            const slider = $('cutoff-slider');
+            const top = Math.max(gradePercentile(0.99), model.minGrade + 1e-9);
+            const dp = gradeDp();
+            const step = Math.max(Number((top / 200).toPrecision(1)), Math.pow(10, -dp));
+
+            slider.min = 0;
+            slider.max = top.toFixed(dp);
+            slider.step = step;
+
+            // Clamp the current value, and keep the label in sync with it.
+            const current = parseFloat(slider.value);
+            if (!isFinite(current) || current > top) slider.value = 0;
+            $('cutoff-val').innerText = parseFloat(slider.value).toFixed(dp);
+        }
+
+        function curveData() {
+            const steps = 60;
+            const top = gradePercentile(0.99);
+            const xs = [], tonnes = [], gradesY = [], metalY = [];
+            for (let i = 0; i <= steps; i++) {
+                const c = top * (i / steps);
+                const r = queryCutoff(c);
+                if (r.count === 0) break;
+                xs.push(c);
+                tonnes.push(r.mass / 1e6);
+                gradesY.push(r.avgGrade);
+                metalY.push(r.metal);
+            }
+            return { xs, tonnes, gradesY, metalY };
+        }
+
+        function renderCurve() {
+            const d = curveData();
+            const unitLabel = GRADE_UNITS[$('grade-unit').value].suffix;
+            const gradeCol = $('grade-col').value;
+
+            const traces = [
+                {
+                    x: d.xs, y: d.tonnes,
+                    name: 'Tonnage (Mt)',
+                    type: 'scatter', mode: 'lines',
+                    line: { color: '#dc3545', width: 3 },
+                    hovertemplate: '%{y:,.2f} Mt<extra>Tonnage</extra>'
+                },
+                {
+                    x: d.xs, y: d.gradesY,
+                    name: 'Avg Grade' + (unitLabel ? ' (' + unitLabel + ')' : ''),
+                    yaxis: 'y2',
+                    type: 'scatter', mode: 'lines',
+                    line: { color: '#0d6efd', width: 3, dash: 'dash' },
+                    hovertemplate: '%{y:,.3f} ' + unitLabel + '<extra>Avg grade</extra>'
+                }
+            ];
+
+            const layout = {
+                title: { text: 'Grade-Tonnage Curve — ' + gradeCol },
+                xaxis: { title: { text: 'Cut-off Grade' + (unitLabel ? ' (' + unitLabel + ')' : '') } },
+                yaxis: {
+                    title: { text: 'Tonnage (Mt)', font: { color: '#dc3545' } },
+                    tickfont: { color: '#dc3545' },
+                    rangemode: 'tozero'
+                },
+                yaxis2: {
+                    title: { text: 'Average Grade' + (unitLabel ? ' (' + unitLabel + ')' : ''), font: { color: '#0d6efd' } },
+                    tickfont: { color: '#0d6efd' },
+                    overlaying: 'y',
+                    side: 'right',
+                    rangemode: 'tozero'
+                },
+                shapes: [cutoffShape()],
+                margin: { t: 50, b: 50, l: 60, r: 60 },
+                hovermode: 'x unified',
+                legend: { orientation: 'h', y: -0.18 }
+            };
+
+            if (chartReady) {
+                Plotly.react('chart-container', traces, layout, { responsive: true });
+            } else {
+                Plotly.newPlot('chart-container', traces, layout, { responsive: true });
+                chartReady = true;
+            }
+        }
+
+        function cutoffShape() {
+            const c = parseFloat($('cutoff-slider').value) || 0;
+            return {
+                type: 'line',
+                x0: c, y0: 0, x1: c, y1: 1,
+                yref: 'paper',
+                line: { color: 'green', width: 2, dash: 'dot' }
+            };
+        }
+
+        function renderCutoffOnly() {
+            if (!model || model.n === 0) return;
+            const cutoff = parseFloat($('cutoff-slider').value) || 0;
+            const r = queryCutoff(cutoff);
+            const dp = gradeDp();
+            const unitLabel = GRADE_UNITS[$('grade-unit').value].suffix;
+
+            $('m-count').innerText = r.count.toLocaleString();
+            $('m-count-sub').innerText = 'of ' + model.n.toLocaleString() + ' modelled';
+
+            const t = fmtTonnes(r.mass);
+            $('m-mass').innerText = t.val;
+            $('m-mass-sub').innerText = t.unit;
+
+            $('m-grade').innerText = fmt(r.avgGrade, dp);
+            $('m-grade-sub').innerText = unitLabel;
+
+            const metal = fmtMetal(r.metal);
+            $('m-metal').innerText = metal.val;
+            $('m-metal-sub').innerText = metal.unit;
+
+            if (chartReady) Plotly.relayout('chart-container', { shapes: [cutoffShape()] });
+        }
+    </script>
+</body>
+</html>

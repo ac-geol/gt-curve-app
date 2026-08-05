@@ -1,0 +1,18 @@
+# Block model exports.
+# Real models run to hundreds of MB — the 2M-block test file was 121 MB and the
+# 5M-block one was 303 MB. GitHub warns above 50 MB and REJECTS any single file
+# over 100 MB, so these must never be committed. The small generated fixture
+# referenced by CLAUDE.md is the one deliberate exception.
+*.csv
+!example_block_model.csv
+
+# macOS
+.DS_Store
+
+# Claude Code machine-specific settings (permissions granted on this laptop only)
+.claude/settings.local.json
+
+# Scratch
+*.tmp
+*.log
+serve/
