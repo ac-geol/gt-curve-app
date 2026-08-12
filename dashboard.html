@@ -71,6 +71,23 @@
             grid-template-columns: repeat(3, 1fr);
             gap: 8px;
         }
+        .axis-row {
+            display: grid;
+            grid-template-columns: 1.6rem 1fr 1fr;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .axis-row .axis-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        /* :not(.hidden) so this does not out-specify the .hidden toggle below. */
+        .axis-row .pair:not(.hidden) {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+        }
         .hint {
             font-size: 0.78rem;
             color: var(--muted);
@@ -154,6 +171,17 @@
 
             <div id="controls-panel" class="hidden">
 
+                <h3 class="section">Units</h3>
+                <div class="control-group">
+                    <label for="unit-system">Unit System</label>
+                    <select id="unit-system">
+                        <option value="metric">Metric — metres, tonnes, t/m&sup3;</option>
+                        <option value="imperial">Imperial — feet, short tons, ton/ft&sup3;</option>
+                    </select>
+                    <div class="hint">Sets what the coordinate, volume, mass and density columns are read as.
+                       Grade units are chosen separately, and are converted where the two differ.</div>
+                </div>
+
                 <h3 class="section">Grade &amp; Domain</h3>
                 <div class="control-group">
                     <label for="grade-col">Grade Column</label>
@@ -163,7 +191,8 @@
                 <div class="control-group">
                     <label for="grade-unit">Grade Units</label>
                     <select id="grade-unit">
-                        <option value="gpt">g/t</option>
+                        <option value="gpt">g/t (grams per tonne)</option>
+                        <option value="opt">opt (troy oz per short ton)</option>
                         <option value="pct">%</option>
                         <option value="ppm">ppm</option>
                         <option value="ppb">ppb</option>
@@ -187,8 +216,7 @@
                 <div class="control-group">
                     <label for="tonnage-mode">Method</label>
                     <select id="tonnage-mode">
-                        <option value="dims">Sub-block dimension columns &times; density</option>
-                        <option value="fixed">Fixed block size &times; density</option>
+                        <option value="geom">Block geometry &times; density</option>
                         <option value="volcol">Volume column &times; density</option>
                         <option value="mass">Mass / tonnage column</option>
                     </select>
@@ -196,38 +224,75 @@
 
                 <!-- mode: mass -->
                 <div class="control-group mode-mass">
-                    <label for="mass-col">Mass Column (tonnes)</label>
+                    <label for="mass-col">Mass Column (<span class="u-mass">tonnes</span>)</label>
                     <select id="mass-col"></select>
                 </div>
 
                 <!-- mode: volcol -->
                 <div class="control-group mode-volcol">
-                    <label for="vol-col">Volume Column (m&sup3;)</label>
+                    <label for="vol-col">Volume Column (<span class="u-vol">m&sup3;</span>)</label>
                     <select id="vol-col"></select>
                 </div>
 
-                <!-- mode: dims -->
-                <div class="control-group mode-dims">
-                    <label>Block Dimension Columns (X / Y / Z)</label>
-                    <div class="triple">
-                        <select id="dx-col"></select>
-                        <select id="dy-col"></select>
-                        <select id="dz-col"></select>
+                <!-- mode: geom — each axis is independently a fixed size, a per-block
+                     size column, or a pair of extent columns. Mixing them covers the
+                     regular model, the fully sub-blocked model, and the common case of
+                     fixed X/Y with a variable Z. -->
+                <div class="control-group mode-geom">
+                    <label>Block Size by Axis</label>
+
+                    <div class="axis-row">
+                        <span class="axis-name">X</span>
+                        <select id="ax-src-x">
+                            <option value="fixed">Fixed size (m)</option>
+                            <option value="col">Size column</option>
+                            <option value="pair">From / to columns</option>
+                        </select>
+                        <input type="number" id="bx" class="ax-x src-fixed" min="0" step="any" placeholder="m">
+                        <select id="dx-col" class="ax-x src-col"></select>
+                        <div class="pair ax-x src-pair">
+                            <select id="lo-x-col"></select>
+                            <select id="hi-x-col"></select>
+                        </div>
                     </div>
-                    <div class="hint">Per-block sizes, so parent cells and sub-blocks are each given their true volume.</div>
+
+                    <div class="axis-row">
+                        <span class="axis-name">Y</span>
+                        <select id="ax-src-y">
+                            <option value="fixed">Fixed size (m)</option>
+                            <option value="col">Size column</option>
+                            <option value="pair">From / to columns</option>
+                        </select>
+                        <input type="number" id="by" class="ax-y src-fixed" min="0" step="any" placeholder="m">
+                        <select id="dy-col" class="ax-y src-col"></select>
+                        <div class="pair ax-y src-pair">
+                            <select id="lo-y-col"></select>
+                            <select id="hi-y-col"></select>
+                        </div>
+                    </div>
+
+                    <div class="axis-row">
+                        <span class="axis-name">Z</span>
+                        <select id="ax-src-z">
+                            <option value="fixed">Fixed size (m)</option>
+                            <option value="col">Size column</option>
+                            <option value="pair">From / to columns</option>
+                        </select>
+                        <input type="number" id="bz" class="ax-z src-fixed" min="0" step="any" placeholder="m">
+                        <select id="dz-col" class="ax-z src-col"></select>
+                        <div class="pair ax-z src-pair">
+                            <select id="lo-z-col"></select>
+                            <select id="hi-z-col"></select>
+                        </div>
+                    </div>
+
+                    <div class="hint">A size column gives every block its true thickness, so variable-Z and
+                       sub-blocked models are measured correctly. From / to columns are subtracted
+                       (e.g. ZMAX &minus; ZMIN). A blank or non-positive size excludes the block rather than
+                       assuming one.</div>
                 </div>
 
-                <!-- mode: fixed -->
-                <div class="control-group mode-fixed">
-                    <label>Parent Cell Size (m: X / Y / Z)</label>
-                    <div class="triple">
-                        <input type="number" id="bx" min="0" step="any">
-                        <input type="number" id="by" min="0" step="any">
-                        <input type="number" id="bz" min="0" step="any">
-                    </div>
-                </div>
-
-                <div class="control-group mode-fixed">
+                <div class="control-group mode-geom">
                     <label>Coordinate Columns (X / Y / Z)</label>
                     <div class="triple">
                         <select id="x-col"></select>
@@ -239,13 +304,22 @@
 
                 <h3 class="section">Density</h3>
                 <div class="control-group density-only">
-                    <label for="density-col">Density Column (t/m&sup3;)</label>
+                    <label for="density-form">Expressed As</label>
+                    <select id="density-form">
+                        <option value="massvol">Density — mass per volume</option>
+                        <option value="tf">Tonnage factor — volume per mass</option>
+                    </select>
+                    <div class="hint" id="density-form-hint"></div>
+                </div>
+
+                <div class="control-group density-only">
+                    <label for="density-col">Density Column (<span class="u-dens">t/m&sup3;</span>)</label>
                     <select id="density-col"></select>
                 </div>
 
                 <div class="control-group density-only">
-                    <label for="density-default">Default Density (t/m&sup3;)</label>
-                    <input type="number" id="density-default" value="2.70" min="0" step="0.01">
+                    <label for="density-default">Default Density (<span class="u-dens">t/m&sup3;</span>)</label>
+                    <input type="number" id="density-default" value="2.70" min="0" step="any">
                     <div class="hint">Used where the density column is blank or unset. Per-domain values below override this.</div>
                 </div>
 
@@ -265,9 +339,11 @@
                 <h3>Getting Started</h3>
                 <p>Upload a CSV block model or assay export featuring spatial coordinates (X, Y, Z), grade variables
                    (e.g. Au, Cu, Ni), and domain categories to generate real-time grade-tonnage curves.</p>
-                <p class="hint">Regular and sub-blocked models are both supported. If the file carries per-block
-                   dimension columns they are detected automatically; otherwise the parent cell size is inferred
-                   from the coordinate spacing and can be overridden.</p>
+                <p class="hint">Regular, sub-blocked and variable-thickness models are all supported. Each axis is
+                   sized independently — a fixed size, a per-block size column, or a from/to pair such as
+                   ZMAX &minus; ZMIN — so a model with fixed X/Y and a varying Z is measured correctly. Size
+                   columns and extent pairs are detected automatically; a uniform axis is inferred from the
+                   coordinate spacing and can be overridden.</p>
             </div>
 
             <div id="dashboard-content" class="hidden">
@@ -316,18 +392,44 @@
         // Cumulative model rebuilt only when data / filter / tonnage config changes.
         // grades sorted descending; cumMass[k] / cumMetal[k] cover the first k blocks.
         let model = null;
-        let domainDensities = {};   // domain value -> t/m3 override
+        let domainDensities = {};   // domain value -> density override, in the current unit form
         let chartReady = false;
         let notices = [];        // rebuilt on every model build
-        let configNotices = [];  // set when columns/geometry are configured; survive rebuilds
+        // Axes whose coordinate spacing is uneven, found when geometry is configured and
+        // kept across rebuilds. Only warned about while that axis is still on a fixed size.
+        let unevenAxes = [];
+
+        const AXES = ['x', 'y', 'z'];
 
         const GRADE_UNITS = {
             gpt:  { label: 'g/t',  suffix: 'g/t'  },
+            opt:  { label: 'opt',  suffix: 'opt'  },
             pct:  { label: '%',    suffix: '%'    },
             ppm:  { label: 'ppm',  suffix: 'ppm'  },
             ppb:  { label: 'ppb',  suffix: 'ppb'  },
             none: { label: '',     suffix: ''     }
         };
+
+        // Metric tonnes per short ton (2000 lb). The only hard conversion in the app:
+        // everything else is a relabelling, because ft x ft x ft x (ton/ft3) is already
+        // short tons exactly as m x m x m x (t/m3) is tonnes.
+        const T_PER_ST = 0.90718474;
+
+        const UNIT_SYSTEMS = {
+            metric:   { len: 'm',  vol: 'm³',  mass: 'tonnes',     massAbbr: ['t', 'kt', 'Mt'],
+                        dens: 't/m³',    tf: 'm³/t',   defDens: 2.7,      defTf: 0.370 },
+            imperial: { len: 'ft', vol: 'ft³', mass: 'short tons', massAbbr: ['st', 'kst', 'Mst'],
+                        dens: 'ton/ft³', tf: 'ft³/ton', defDens: 0.0843,  defTf: 11.87 }
+        };
+
+        function units() {
+            return UNIT_SYSTEMS[$('unit-system').value] || UNIT_SYSTEMS.metric;
+        }
+
+        // The unit the tonnage numbers are in, which is whatever the geometry produced.
+        function massIsShortTons() {
+            return $('unit-system').value === 'imperial';
+        }
 
         const $ = id => document.getElementById(id);
 
@@ -391,7 +493,7 @@
             model = null;
             domainDensities = {};
             notices = [];
-            configNotices = [];
+            unevenAxes = [];
             chartReady = false;
             Plotly.purge('chart-container');
         }
@@ -452,15 +554,19 @@
             fillSelect($('vol-col'), numericCols);
             fillSelect($('domain-col'), categoryCols, { text: '-- None --', value: 'NONE' });
             fillSelect($('density-col'), numericCols, { text: '-- Use default / overrides --', value: 'NONE' });
-            ['dx-col', 'dy-col', 'dz-col'].forEach(id =>
-                fillSelect($(id), numericCols, { text: '--', value: 'NONE' }));
-            ['x-col', 'y-col', 'z-col'].forEach(id =>
-                fillSelect($(id), numericCols, { text: '--', value: 'NONE' }));
+            AXES.forEach(ax => {
+                ['d' + ax + '-col', 'lo-' + ax + '-col', 'hi-' + ax + '-col', ax + '-col'].forEach(id =>
+                    fillSelect($(id), numericCols, { text: '--', value: 'NONE' }));
+            });
 
-            // Smart defaults if matching column names exist
-            const defaultGrade = findCol(numericCols, /^(au|cu|ni|ag|pb|zn|co|u3o8)$|grade|_gpt|_pct/i) || numericCols[0];
+            // Smart defaults if matching column names exist. _opt / _oz are the imperial
+            // spellings; without them an AU_OPT model falls through to numericCols[0],
+            // which is a coordinate column and silently plots nonsense.
+            const defaultGrade = findCol(numericCols,
+                /^(au|cu|ni|ag|pb|zn|co|u3o8)$|grade|_gpt|_pct|_opt|_oz|_ppm|_ppb/i) || numericCols[0];
             if (defaultGrade) $('grade-col').value = defaultGrade;
-            if (/pct|%|_cu|_ni|_pb|_zn/i.test(defaultGrade || '')) $('grade-unit').value = 'pct';
+            if (/_opt$|_oz$|oz_?t|opt$/i.test(defaultGrade || '')) $('grade-unit').value = 'opt';
+            else if (/pct|%|_cu|_ni|_pb|_zn/i.test(defaultGrade || '')) $('grade-unit').value = 'pct';
 
             const defaultMass = findCol(numericCols, /ton|tonne|mass|weight/i);
             if (defaultMass) $('mass-col').value = defaultMass;
@@ -480,29 +586,67 @@
 
         // ---------------------------------------------------------------
         // 4. TONNAGE AUTO-CONFIGURATION
-        //    Prefer per-block dimension columns (the sub-block case). Failing
-        //    that, infer a regular parent cell from the coordinate lattice.
+        //    Each axis is resolved on its own: a per-block size column if the
+        //    export has one, else a from/to extent pair, else a fixed size
+        //    inferred from the coordinate lattice. Axes are free to differ —
+        //    fixed X/Y with a variable Z is a normal model, not an error.
         // ---------------------------------------------------------------
-        function autoConfigureTonnage() {
-            const dx = findCol(numericCols, /^(dx|xinc|xsize|xlength|xdim|blockx|dim_x)$/i);
-            const dy = findCol(numericCols, /^(dy|yinc|ysize|ylength|ydim|blocky|dim_y)$/i);
-            const dz = findCol(numericCols, /^(dz|zinc|zsize|zlength|zdim|blockz|dim_z)$/i);
+        const SIZE_COL_RE = {
+            x: /^(dx|xinc|xsize|xlength|xdim|blockx|dim_x|x_size)$/i,
+            y: /^(dy|yinc|ysize|ylength|ydim|blocky|dim_y|y_size)$/i,
+            z: /^(dz|zinc|zsize|zlength|zdim|blockz|dim_z|z_size|thick|thickness|height)$/i
+        };
+        // Deliberately no east/north/west/south here — those name a centroid, not an extent.
+        const LO_COL_RE = {
+            x: /^(xmin|x_min|xfrom|x_from|xlo)$/i,
+            y: /^(ymin|y_min|yfrom|y_from|ylo)$/i,
+            z: /^(zmin|z_min|zfrom|z_from|zlo|zbot|zbottom|zbase|base|bottom|from)$/i
+        };
+        const HI_COL_RE = {
+            x: /^(xmax|x_max|xto|x_to|xhi)$/i,
+            y: /^(ymax|y_max|yto|y_to|yhi)$/i,
+            z: /^(zmax|z_max|zto|z_to|zhi|ztop|top|to)$/i
+        };
 
-            if (dx && dy && dz) {
-                $('dx-col').value = dx;
-                $('dy-col').value = dy;
-                $('dz-col').value = dz;
-                $('tonnage-mode').value = 'dims';
+        function autoConfigureAxes() {
+            let anyGeom = false;
+            AXES.forEach(ax => {
+                const sizeCol = findCol(numericCols, SIZE_COL_RE[ax]);
+                const lo = findCol(numericCols, LO_COL_RE[ax]);
+                const hi = findCol(numericCols, HI_COL_RE[ax]);
+
+                if (sizeCol) {
+                    $('d' + ax + '-col').value = sizeCol;
+                    $('ax-src-' + ax).value = 'col';
+                    anyGeom = true;
+                } else if (lo && hi) {
+                    $('lo-' + ax + '-col').value = lo;
+                    $('hi-' + ax + '-col').value = hi;
+                    $('ax-src-' + ax).value = 'pair';
+                    anyGeom = true;
+                } else {
+                    $('ax-src-' + ax).value = 'fixed';
+                }
+            });
+            return anyGeom;
+        }
+
+        function autoConfigureTonnage() {
+            const anyGeom = autoConfigureAxes();
+
+            if (anyGeom) {
+                $('tonnage-mode').value = 'geom';
             } else if (findCol(numericCols, /^vol|volume$/i)) {
                 $('tonnage-mode').value = 'volcol';
             } else if ($('x-col').value !== 'NONE') {
-                $('tonnage-mode').value = 'fixed';
+                $('tonnage-mode').value = 'geom';
             } else {
                 $('tonnage-mode').value = 'mass';
             }
 
             inferBlockSize();
             applyModeVisibility();
+            applyUnitLabels();
         }
 
         // Modal spacing of the unique coordinates on each axis.
@@ -533,37 +677,43 @@
         }
 
         function inferBlockSize() {
-            const axes = [['x-col', 'bx'], ['y-col', 'by'], ['z-col', 'bz']];
             const parts = [];
-            let irregular = false;
-            configNotices = [];
+            unevenAxes = [];
 
-            axes.forEach(([colId, inputId]) => {
-                const sp = inferSpacing($(colId).value);
+            AXES.forEach(ax => {
+                const sp = inferSpacing($(ax + '-col').value);
                 if (!sp) return;
-                parts.push(colId.charAt(0).toUpperCase() + ' ' + sp.size + ' m');
-                // On a sub-blocked model the modal spacing is the *sub-block* size, not the
-                // parent cell. Prefilling it would silently understate tonnage several-fold,
-                // so leave the field blank and make the user supply the parent size.
-                if (sp.coverage < 0.9) irregular = true;
-                else if (!$(inputId).value) $(inputId).value = sp.size;
+                const name = ax.toUpperCase();
+                // On a sub-blocked or variable-thickness axis the modal spacing is the
+                // *smallest* cell, not the parent. Prefilling it would silently understate
+                // tonnage several-fold, so leave the field blank and make the user supply it.
+                if (sp.coverage < 0.9) {
+                    unevenAxes.push(ax);
+                    parts.push(name + ' uneven (smallest ' + sp.size + ' ' + units().len + ')');
+                    return;
+                }
+                parts.push(name + ' ' + sp.size + ' ' + units().len);
+                // Only an axis actually measured by one fixed number gets prefilled. On a
+                // variable-thickness axis the centroids still land on a fine regular grid
+                // (0.5 m centroid spacing for 1-10 m blocks), so the coverage test reads as
+                // confident and would plant a badly wrong size for the user to switch onto.
+                if ($('ax-src-' + ax).value === 'fixed' && !$('b' + ax).value) {
+                    $('b' + ax).value = sp.size;
+                }
             });
 
             const hint = $('spacing-hint');
-            if (parts.length === 0) {
-                hint.innerText = 'Select coordinate columns to infer the cell size.';
-                return;
-            }
-            hint.innerText = 'Inferred spacing: ' + parts.join(', ') +
-                (irregular
-                    ? ' — uneven, so this is the smallest sub-block, not the parent cell. Enter the parent size yourself.'
-                    : '');
+            hint.innerText = parts.length === 0
+                ? 'Select coordinate columns to infer the cell size.'
+                : 'Centroid spacing: ' + parts.join(', ') +
+                  '. This is the cell size only on an axis of uniform blocks — on a variable or ' +
+                  'sub-blocked axis, measure it from a size column or a from/to pair instead.';
+        }
 
-            if (irregular) {
-                configNotices.push('Coordinate spacing is uneven, which usually means the model is sub-blocked. ' +
-                                   'A single fixed cell size will misstate tonnage — use per-block dimension ' +
-                                   'columns if the export has them.');
-            }
+        // The uneven-spacing warning only applies to an axis still measured by one fixed
+        // number; an axis reading a size column or an extent pair is already per-block.
+        function unevenFixedAxes() {
+            return unevenAxes.filter(ax => $('ax-src-' + ax).value === 'fixed');
         }
 
         // ---------------------------------------------------------------
@@ -571,13 +721,54 @@
         // ---------------------------------------------------------------
         function applyModeVisibility() {
             const mode = $('tonnage-mode').value;
-            ['mass', 'volcol', 'dims', 'fixed'].forEach(m => {
+            ['mass', 'volcol', 'geom'].forEach(m => {
                 document.querySelectorAll('.mode-' + m).forEach(el =>
                     el.classList.toggle('hidden', m !== mode));
             });
             // Density is irrelevant when tonnage is read straight from a mass column.
             document.querySelectorAll('.density-only').forEach(el =>
                 el.classList.toggle('hidden', mode === 'mass'));
+            applyAxisVisibility();
+        }
+
+        // Every unit-bearing label in the UI is written from here, so the unit system
+        // has exactly one source of truth. Values are never silently reinterpreted:
+        // switching systems resets the default density instead of leaving a metric
+        // number sitting under an imperial label.
+        function applyUnitLabels() {
+            const u = units();
+            const tf = $('density-form').value === 'tf';
+            const densUnit = tf ? u.tf : u.dens;
+
+            document.querySelectorAll('.u-len').forEach(el => el.innerText = u.len);
+            document.querySelectorAll('.u-vol').forEach(el => el.innerText = u.vol);
+            document.querySelectorAll('.u-mass').forEach(el => el.innerText = u.mass);
+            document.querySelectorAll('.u-dens').forEach(el => el.innerText = densUnit);
+
+            AXES.forEach(ax => {
+                $('b' + ax).placeholder = u.len;
+                $('ax-src-' + ax).options[0].text = 'Fixed size (' + u.len + ')';
+            });
+
+            $('density-form-hint').innerText = tf
+                ? 'Block volume is divided by this — the imperial convention, around 11.9 ' + u.tf + ' for ' +
+                  'ordinary rock. Getting it the wrong way up is a large silent error, so check the unit.'
+                : 'Block volume is multiplied by this — around ' + (massIsShortTons() ? '0.084' : '2.70') +
+                  ' ' + u.dens + ' for ordinary rock.';
+        }
+
+        function resetDefaultDensity() {
+            const u = units();
+            $('density-default').value = $('density-form').value === 'tf' ? u.defTf : u.defDens;
+        }
+
+        // Within each axis row, show only the widget the axis' source select calls for.
+        function applyAxisVisibility() {
+            AXES.forEach(ax => {
+                const src = $('ax-src-' + ax).value;
+                document.querySelectorAll('.ax-' + ax).forEach(el =>
+                    el.classList.toggle('hidden', !el.classList.contains('src-' + src)));
+            });
         }
 
         $('domain-col').addEventListener('change', function() {
@@ -590,15 +781,34 @@
             rebuildAndRender();
         });
 
-        ['x-col', 'y-col', 'z-col'].forEach(id => $(id).addEventListener('change', function() {
-            $('bx').value = ''; $('by').value = ''; $('bz').value = '';
+        // Switching system or density form changes what the numbers already on screen mean,
+        // so the density default and any per-domain overrides are reset rather than carried
+        // across and silently reinterpreted under the new label.
+        ['unit-system', 'density-form'].forEach(id => $(id).addEventListener('change', function() {
+            resetDefaultDensity();
+            applyUnitLabels();
+            updateDomainFilterValues();
             inferBlockSize();
             rebuildAndRender();
         }));
 
-        ['grade-col', 'grade-unit', 'domain-val', 'mass-col', 'vol-col',
-         'dx-col', 'dy-col', 'dz-col', 'density-col'].forEach(id =>
-            $(id).addEventListener('change', rebuildAndRender));
+        AXES.forEach(ax => $(ax + '-col').addEventListener('change', function() {
+            AXES.forEach(a => $('b' + a).value = '');
+            inferBlockSize();
+            rebuildAndRender();
+        }));
+
+        AXES.forEach(ax => $('ax-src-' + ax).addEventListener('change', function() {
+            applyAxisVisibility();
+            rebuildAndRender();
+        }));
+
+        const axisInputs = [];
+        AXES.forEach(ax => axisInputs.push('d' + ax + '-col', 'lo-' + ax + '-col', 'hi-' + ax + '-col'));
+
+        ['grade-col', 'grade-unit', 'domain-val', 'mass-col', 'vol-col', 'density-col']
+            .concat(axisInputs)
+            .forEach(id => $(id).addEventListener('change', rebuildAndRender));
 
         ['bx', 'by', 'bz', 'density-default'].forEach(id =>
             $(id).addEventListener('input', rebuildAndRender));
@@ -657,7 +867,8 @@
             }
 
             const label = document.createElement('label');
-            label.innerText = 'Density by Domain (t/m³)';
+            label.innerText = 'Density by Domain (' +
+                ($('density-form').value === 'tf' ? units().tf : units().dens) + ')';
             wrap.appendChild(label);
 
             const table = document.createElement('table');
@@ -687,23 +898,72 @@
             return (typeof v === 'number' && isFinite(v)) ? v : null;
         }
 
-        function makeMassFn() {
-            const mode = $('tonnage-mode').value;
+        // Rock is a narrow range of densities, and a tonnage factor sits well outside it —
+        // 12 ft³/ton read as 12 ton/ft³ overstates tonnage ~140x. The app cannot tell the
+        // two apart by column name, so the resolved value is sanity-checked against what
+        // rock actually weighs and flagged, not corrected.
+        const DENSITY_RANGE = {
+            metric:   { lo: 1.0,  hi: 6.0 },   // t/m³
+            imperial: { lo: 0.03, hi: 0.20 }   // ton/ft³
+        };
+
+        function densityPlausibilityNotice() {
+            if ($('tonnage-mode').value === 'mass' || rawData.length === 0) return null;
+
+            const densityOf = makeDensityFn();
+            const seen = [];
+            const stride = Math.max(1, Math.floor(rawData.length / 500));
+            for (let i = 0; i < rawData.length && seen.length < 500; i += stride) {
+                const d = densityOf(rawData[i]);
+                if (d !== null) seen.push(d);
+            }
+            if (seen.length === 0) return null;
+
+            seen.sort((a, b) => a - b);
+            const median = seen[seen.length >> 1];
+            const sys = $('unit-system').value === 'imperial' ? 'imperial' : 'metric';
+            const r = DENSITY_RANGE[sys];
+            if (median >= r.lo && median <= r.hi) return null;
+
+            const u = units();
+            const isTf = $('density-form').value === 'tf';
+            return 'Density resolves to about ' + median.toPrecision(3) + ' ' + u.dens +
+                   ', outside the ' + r.lo + '–' + r.hi + ' ' + u.dens + ' that rock occupies. ' +
+                   (isTf
+                       ? 'Check the values really are ' + u.tf + ' and not ' + u.dens + '.'
+                       : 'If the column is a tonnage factor (' + u.tf + '), set Expressed As to tonnage factor.') +
+                   ' Tonnage is being reported as entered.';
+        }
+
+        // Always returns mass per volume, whichever way round the user entered it, so
+        // every caller works in one convention. Shared with the plausibility check below
+        // rather than duplicated, since two copies of this precedence would drift.
+        function makeDensityFn() {
             const domainCol = $('domain-col').value;
             const densityCol = $('density-col').value;
             const defaultDensity = parseFloat($('density-default').value);
 
-            const densityOf = row => {
+            // A tonnage factor is volume per unit mass, so it is the reciprocal of a density
+            // and enters the same multiply once inverted.
+            const isTf = $('density-form').value === 'tf';
+            const asMassPerVolume = v => (v === null || !(v > 0)) ? null : (isTf ? 1 / v : v);
+
+            return row => {
                 if (densityCol !== 'NONE') {
-                    const d = num(row[densityCol]);
-                    if (d !== null && d > 0) return d;
+                    const d = asMassPerVolume(num(row[densityCol]));
+                    if (d !== null) return d;
                 }
                 if (domainCol !== 'NONE') {
                     const o = domainDensities[String(row[domainCol])];
-                    if (o !== undefined) return o;
+                    if (o !== undefined) return asMassPerVolume(o);
                 }
-                return (isFinite(defaultDensity) && defaultDensity > 0) ? defaultDensity : null;
+                return isFinite(defaultDensity) ? asMassPerVolume(defaultDensity) : null;
             };
+        }
+
+        function makeMassFn() {
+            const mode = $('tonnage-mode').value;
+            const densityOf = makeDensityFn();
 
             if (mode === 'mass') {
                 const massCol = $('mass-col').value;
@@ -720,25 +980,47 @@
                 };
             }
 
-            if (mode === 'dims') {
-                const dxc = $('dx-col').value, dyc = $('dy-col').value, dzc = $('dz-col').value;
-                if (dxc === 'NONE' || dyc === 'NONE' || dzc === 'NONE') return () => null;
+            // geom: one extent closure per axis, so a fixed X/Y with a per-block Z
+            // (or any other mix) is expressed without fabricating dimension columns.
+            const fx = makeExtentFn('x'), fy = makeExtentFn('y'), fz = makeExtentFn('z');
+            return row => {
+                const a = fx(row); if (a === null) return null;
+                const b = fy(row); if (b === null) return null;
+                const c = fz(row); if (c === null) return null;
+                const d = densityOf(row);
+                return d === null ? null : a * b * c * d;
+            };
+        }
+
+        // Length of one block edge, in metres. Returns null — never a default — whenever
+        // the size is missing or non-positive, so the block is excluded and counted.
+        function makeExtentFn(ax) {
+            const src = $('ax-src-' + ax).value;
+
+            if (src === 'col') {
+                const col = $('d' + ax + '-col').value;
+                if (col === 'NONE') return () => null;
                 return row => {
-                    const a = num(row[dxc]), b = num(row[dyc]), c = num(row[dzc]);
-                    const d = densityOf(row);
-                    if (a === null || b === null || c === null || d === null) return null;
-                    return a * b * c * d;
+                    const v = num(row[col]);
+                    return (v !== null && v > 0) ? v : null;
                 };
             }
 
-            // fixed
-            const vx = parseFloat($('bx').value), vy = parseFloat($('by').value), vz = parseFloat($('bz').value);
-            if (!(vx > 0 && vy > 0 && vz > 0)) return () => null;
-            const volume = vx * vy * vz;
-            return row => {
-                const d = densityOf(row);
-                return d === null ? null : volume * d;
-            };
+            if (src === 'pair') {
+                const lo = $('lo-' + ax + '-col').value, hi = $('hi-' + ax + '-col').value;
+                if (lo === 'NONE' || hi === 'NONE') return () => null;
+                return row => {
+                    const a = num(row[lo]), b = num(row[hi]);
+                    if (a === null || b === null) return null;
+                    // Elevation pairs are sometimes stored top-first, so take the magnitude.
+                    const t = Math.abs(b - a);
+                    return t > 0 ? t : null;
+                };
+            }
+
+            const v = parseFloat($('b' + ax).value);
+            if (!(v > 0)) return () => null;
+            return () => v;
         }
 
         // ---------------------------------------------------------------
@@ -831,33 +1113,45 @@
         }
 
         function fmtTonnes(t) {
-            if (t >= 1e6) return { val: fmt(t / 1e6, 2), unit: 'Mt' };
-            if (t >= 1e3) return { val: fmt(t / 1e3, 2), unit: 'kt' };
-            return { val: fmt(t, 0), unit: 't' };
+            const a = units().massAbbr;
+            if (t >= 1e6) return { val: fmt(t / 1e6, 2), unit: a[2] };
+            if (t >= 1e3) return { val: fmt(t / 1e3, 2), unit: a[1] };
+            return { val: fmt(t, 0), unit: a[0] };
         }
 
-        // metal = sum(grade * tonnes), interpreted per the selected grade unit.
-        function fmtMetal(gradeTonnes) {
+        // metal = sum(grade * mass), where mass is in the unit system's tons.
+        //
+        // g/t is per metric tonne and opt is per short ton, so a grade unit that disagrees
+        // with the tonnage unit needs the one real conversion in the app. Ratio units
+        // (%, ppm, ppb) are mass fractions and carry over untouched.
+        function fmtMetal(gradeMass) {
             const unit = $('grade-unit').value;
-            if (unit === 'gpt' || unit === 'ppm') {
-                const oz = gradeTonnes / 31.1034768;          // grams -> troy ounces
-                const tonnesMetal = gradeTonnes / 1e6;        // grams -> tonnes
-                if (unit === 'gpt') {
-                    if (oz >= 1e6) return { val: fmt(oz / 1e6, 2), unit: 'Moz' };
-                    return { val: fmt(oz / 1e3, 1), unit: 'koz' };
-                }
-                const s = fmtTonnes(tonnesMetal);
+            const st = massIsShortTons();
+
+            if (unit === 'gpt') {
+                const grams = gradeMass * (st ? T_PER_ST : 1);   // -> grams per metric tonne basis
+                const oz = grams / 31.1034768;
+                if (oz >= 1e6) return { val: fmt(oz / 1e6, 2), unit: 'Moz' };
+                return { val: fmt(oz / 1e3, 1), unit: 'koz' };
+            }
+            if (unit === 'opt') {
+                const oz = gradeMass * (st ? 1 : 1 / T_PER_ST);  // -> troy oz per short ton basis
+                if (oz >= 1e6) return { val: fmt(oz / 1e6, 2), unit: 'Moz' };
+                return { val: fmt(oz / 1e3, 1), unit: 'koz' };
+            }
+            if (unit === 'ppm') {
+                const s = fmtTonnes(gradeMass / 1e6);
                 return { val: s.val, unit: s.unit + ' metal' };
             }
             if (unit === 'ppb') {
-                const s = fmtTonnes(gradeTonnes / 1e9);
+                const s = fmtTonnes(gradeMass / 1e9);
                 return { val: s.val, unit: s.unit + ' metal' };
             }
             if (unit === 'pct') {
-                const s = fmtTonnes(gradeTonnes / 100);
+                const s = fmtTonnes(gradeMass / 100);
                 return { val: s.val, unit: s.unit + ' metal' };
             }
-            return { val: fmt(gradeTonnes, 0), unit: 'grade·t' };
+            return { val: fmt(gradeMass, 0), unit: 'grade·' + units().massAbbr[0] };
         }
 
         function pushNotice(msg) {
@@ -886,8 +1180,20 @@
         // 9. RENDER
         // ---------------------------------------------------------------
         function rebuildAndRender() {
-            // Sub-blocking warnings only matter while a single fixed cell size is in use.
-            notices = ($('tonnage-mode').value === 'fixed') ? configNotices.slice() : [];
+            notices = [];
+            // Uneven spacing only misstates tonnage on an axis still using one fixed size.
+            if ($('tonnage-mode').value === 'geom') {
+                const stale = unevenFixedAxes();
+                if (stale.length) {
+                    notices.push('Coordinate spacing on ' + stale.map(a => a.toUpperCase()).join('/') +
+                                 ' is uneven, which usually means variable cell sizes or a sub-blocked model. ' +
+                                 'A single fixed size there will misstate tonnage — use a size column or a ' +
+                                 'from/to pair if the export has one.');
+                }
+            }
+            const densityWarning = densityPlausibilityNotice();
+            if (densityWarning) notices.push(densityWarning);
+
             model = buildModel();
 
             if (model.skippedGrade > 0) {
@@ -951,15 +1257,16 @@
         function renderCurve() {
             const d = curveData();
             const unitLabel = GRADE_UNITS[$('grade-unit').value].suffix;
+            const bigMass = units().massAbbr[2];   // curveData() reports tonnage in millions
             const gradeCol = $('grade-col').value;
 
             const traces = [
                 {
                     x: d.xs, y: d.tonnes,
-                    name: 'Tonnage (Mt)',
+                    name: 'Tonnage (' + bigMass + ')',
                     type: 'scatter', mode: 'lines',
                     line: { color: '#dc3545', width: 3 },
-                    hovertemplate: '%{y:,.2f} Mt<extra>Tonnage</extra>'
+                    hovertemplate: '%{y:,.2f} ' + bigMass + '<extra>Tonnage</extra>'
                 },
                 {
                     x: d.xs, y: d.gradesY,
@@ -975,7 +1282,7 @@
                 title: { text: 'Grade-Tonnage Curve — ' + gradeCol },
                 xaxis: { title: { text: 'Cut-off Grade' + (unitLabel ? ' (' + unitLabel + ')' : '') } },
                 yaxis: {
-                    title: { text: 'Tonnage (Mt)', font: { color: '#dc3545' } },
+                    title: { text: 'Tonnage (' + bigMass + ')', font: { color: '#dc3545' } },
                     tickfont: { color: '#dc3545' },
                     rangemode: 'tozero'
                 },
