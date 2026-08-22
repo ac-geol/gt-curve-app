@@ -66,6 +66,11 @@
             box-sizing: border-box;
             font-size: 0.9rem;
         }
+        .range-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
         .triple {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -196,8 +201,12 @@
                         <option value="pct">%</option>
                         <option value="ppm">ppm</option>
                         <option value="ppb">ppb</option>
+                        <option value="value">$/t (net value / NSR)</option>
                         <option value="none">unitless</option>
                     </select>
+                    <div class="hint">A $/t value or NSR column is a cut-off variable like any grade —
+                       the curve, average and totals are all computed the same way, and the total is
+                       reported as dollars rather than metal.</div>
                 </div>
 
                 <div class="control-group">
@@ -327,8 +336,36 @@
 
                 <h3 class="section">Evaluation</h3>
                 <div class="control-group">
-                    <label for="cutoff-slider">Cut-off Grade: <span id="cutoff-val">0.00</span></label>
+                    <label for="cutoff-slider">Cut-off <span class="grade-noun">Grade</span>:
+                        <span id="cutoff-val">0.00</span></label>
                     <input type="range" id="cutoff-slider" min="0" max="10" step="0.05" value="0">
+                </div>
+
+                <h3 class="section">Chart Axes</h3>
+                <div class="control-group">
+                    <label>Cut-off Axis <span class="u-grade"></span></label>
+                    <div class="range-grid">
+                        <input type="number" id="rx-min" step="any" placeholder="auto min">
+                        <input type="number" id="rx-max" step="any" placeholder="auto max">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Tonnage Axis (<span class="u-massbig">Mt</span>)</label>
+                    <div class="range-grid">
+                        <input type="number" id="ry-min" step="any" placeholder="auto min">
+                        <input type="number" id="ry-max" step="any" placeholder="auto max">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Average <span class="grade-noun">Grade</span> Axis <span class="u-grade"></span></label>
+                    <div class="range-grid">
+                        <input type="number" id="ry2-min" step="any" placeholder="auto min">
+                        <input type="number" id="ry2-max" step="any" placeholder="auto max">
+                    </div>
+                    <div class="hint">Blank ends are scaled to the data. These only change the view —
+                       the curve and the numbers above it are unaffected.</div>
                 </div>
             </div>
         </div>
@@ -362,12 +399,12 @@
                         <div class="sub" id="m-mass-sub"></div>
                     </div>
                     <div class="metric-card">
-                        <div class="lbl">Avg Grade Above Cut-off</div>
+                        <div class="lbl">Avg <span class="grade-noun">Grade</span> Above Cut-off</div>
                         <div class="val" id="m-grade">-</div>
                         <div class="sub" id="m-grade-sub"></div>
                     </div>
                     <div class="metric-card">
-                        <div class="lbl">Contained Metal</div>
+                        <div class="lbl">Contained <span class="metal-noun">Metal</span></div>
                         <div class="val" id="m-metal">-</div>
                         <div class="sub" id="m-metal-sub"></div>
                     </div>
@@ -398,6 +435,9 @@
         // Axes whose coordinate spacing is uneven, found when geometry is configured and
         // kept across rebuilds. Only warned about while that axis is still on a fixed size.
         let unevenAxes = [];
+        // Last plotted curve, kept so a half-specified chart range can scale its open
+        // end to the data without recomputing anything.
+        let lastCurve = null;
 
         const AXES = ['x', 'y', 'z'];
 
@@ -407,6 +447,9 @@
             pct:  { label: '%',    suffix: '%'    },
             ppm:  { label: 'ppm',  suffix: 'ppm'  },
             ppb:  { label: 'ppb',  suffix: 'ppb'  },
+            // A $/t value column carries the unit system's currency-per-ton label, so its
+            // suffix comes from UNIT_SYSTEMS rather than from here — see gradeUnitSuffix().
+            value:{ label: '$/t',  suffix: '$/t'  },
             none: { label: '',     suffix: ''     }
         };
 
@@ -417,9 +460,11 @@
 
         const UNIT_SYSTEMS = {
             metric:   { len: 'm',  vol: 'm³',  mass: 'tonnes',     massAbbr: ['t', 'kt', 'Mt'],
-                        dens: 't/m³',    tf: 'm³/t',   defDens: 2.7,      defTf: 0.370 },
+                        dens: 't/m³',    tf: 'm³/t',   defDens: 2.7,      defTf: 0.370,
+                        value: '$/t' },
             imperial: { len: 'ft', vol: 'ft³', mass: 'short tons', massAbbr: ['st', 'kst', 'Mst'],
-                        dens: 'ton/ft³', tf: 'ft³/ton', defDens: 0.0843,  defTf: 11.87 }
+                        dens: 'ton/ft³', tf: 'ft³/ton', defDens: 0.0843,  defTf: 11.87,
+                        value: '$/ton' }
         };
 
         function units() {
@@ -432,6 +477,25 @@
         }
 
         const $ = id => document.getElementById(id);
+
+        // A value / NSR column is a dollar amount per ton of ore rather than a metal
+        // content, so it prices whichever ton the tonnage is already in: $/t against
+        // tonnes, $/ton against short tons. Like the geometry, switching system relabels
+        // it and converts nothing — the multiply grade x mass gives dollars either way.
+        function isValueGrade() {
+            return $('grade-unit').value === 'value';
+        }
+
+        function gradeUnitSuffix() {
+            const key = $('grade-unit').value;
+            if (key === 'value') return units().value;
+            return (GRADE_UNITS[key] || GRADE_UNITS.none).suffix;
+        }
+
+        // What the cut-off variable is called in labels and titles.
+        function gradeNoun() {
+            return isValueGrade() ? 'Value' : 'Grade';
+        }
 
         // ---------------------------------------------------------------
         // 1. FILE UPLOAD HANDLER (PapaParse)
@@ -491,6 +555,7 @@
         function resetState() {
             rawData = [];
             model = null;
+            lastCurve = null;
             domainDensities = {};
             notices = [];
             unevenAxes = [];
@@ -548,6 +613,33 @@
             return cols.find(c => pattern.test(c)) || null;
         }
 
+        // Dollar-per-ton cut-off variables on a polymetallic model. These are stamped with
+        // the two-digit year of the price deck they were run against — VALUE26, STRAT26,
+        // NSR_2026 — so an optional 2-4 digit suffix is part of the name, not a separate
+        // column. Anchored or separator-joined on purpose: VALIDATION, REVISION, INTERVAL
+        // and PLAN_ID must not read as dollars.
+        //
+        // Two tiers, because the names are not equally safe. NSR / VALUE / VAL and the dollar
+        // spellings say what the column *holds*; PLAN and STRAT only say what it was run
+        // *for*, and STRAT is also how a stratigraphic code is named.
+        const VALUE_COL_RE =
+            /^(?:nsr|value|val|dollar|dollars|revenue|net_?smelter\w*|recov(?:ered)?_?value)(?:_?\d{2,4})?$|_(?:nsr|value|val)(?:_?\d{2,4})?$|^(?:nsr|value)_|\$/i;
+        const PLAN_COL_RE = /^(?:plan|strat)(?:_?\d{2,4})?$/i;
+
+        // A $/t value runs to thousands of distinct numbers; a stratigraphy or plan-stage code
+        // runs to a handful, which is exactly what inspectColumns() puts in categoryCols. So a
+        // weak-tier name is taken only when it is not also a plausible domain code — otherwise
+        // a numeric STRAT beside a VALUE26 charts rock codes as dollars, confidently and wrongly.
+        function findValueCol(cols) {
+            return findCol(cols, VALUE_COL_RE)
+                || cols.find(c => PLAN_COL_RE.test(c) && categoryCols.indexOf(c) === -1)
+                || null;
+        }
+
+        function isValueCol(name) {
+            return VALUE_COL_RE.test(name) || PLAN_COL_RE.test(name);
+        }
+
         function populateDropdowns() {
             fillSelect($('grade-col'), numericCols);
             fillSelect($('mass-col'), numericCols);
@@ -562,11 +654,22 @@
             // Smart defaults if matching column names exist. _opt / _oz are the imperial
             // spellings; without them an AU_OPT model falls through to numericCols[0],
             // which is a coordinate column and silently plots nonsense.
+            // A value / NSR column is a legitimate cut-off variable, but it is only the
+            // fallback: on a model carrying both, the element grade names the deposit.
             const defaultGrade = findCol(numericCols,
-                /^(au|cu|ni|ag|pb|zn|co|u3o8)$|grade|_gpt|_pct|_opt|_oz|_ppm|_ppb/i) || numericCols[0];
+                    /^(au|cu|ni|ag|pb|zn|co|u3o8)$|grade|_gpt|_pct|_opt|_oz|_ppm|_ppb/i)
+                || findValueCol(numericCols)
+                || numericCols[0];
             if (defaultGrade) $('grade-col').value = defaultGrade;
-            if (/_opt$|_oz$|oz_?t|opt$/i.test(defaultGrade || '')) $('grade-unit').value = 'opt';
-            else if (/pct|%|_cu|_ni|_pb|_zn/i.test(defaultGrade || '')) $('grade-unit').value = 'pct';
+
+            // Exhaustive on purpose: without the final else, loading a $/t model and then a
+            // g/t one leaves the grade unit on $/t, and the metal card reports ounces as
+            // dollars. Every other default here is re-inferred per file; so is this one.
+            const gradeName = defaultGrade || '';
+            if (isValueCol(gradeName)) $('grade-unit').value = 'value';
+            else if (/_opt$|_oz$|oz_?t|opt$/i.test(gradeName)) $('grade-unit').value = 'opt';
+            else if (/pct|%|_cu|_ni|_pb|_zn/i.test(gradeName)) $('grade-unit').value = 'pct';
+            else $('grade-unit').value = 'gpt';
 
             const defaultMass = findCol(numericCols, /ton|tonne|mass|weight/i);
             if (defaultMass) $('mass-col').value = defaultMass;
@@ -743,7 +846,22 @@
             document.querySelectorAll('.u-len').forEach(el => el.innerText = u.len);
             document.querySelectorAll('.u-vol').forEach(el => el.innerText = u.vol);
             document.querySelectorAll('.u-mass').forEach(el => el.innerText = u.mass);
+            document.querySelectorAll('.u-massbig').forEach(el => el.innerText = u.massAbbr[2]);
             document.querySelectorAll('.u-dens').forEach(el => el.innerText = densUnit);
+
+            // The grade unit brings its own brackets: an unitless model would otherwise be
+            // labelled "Cut-off Axis ()".
+            const gradeUnit = gradeUnitSuffix();
+            document.querySelectorAll('.u-grade').forEach(el =>
+                el.innerText = gradeUnit ? '(' + gradeUnit + ')' : '');
+
+            // Grade and metal are the wrong nouns for a $/t cut-off, which contains dollars.
+            document.querySelectorAll('.grade-noun').forEach(el => el.innerText = gradeNoun());
+            document.querySelectorAll('.metal-noun').forEach(el =>
+                el.innerText = isValueGrade() ? 'Value' : 'Metal');
+
+            const valueOpt = $('grade-unit').querySelector('option[value="value"]');
+            if (valueOpt) valueOpt.text = u.value + ' (net value / NSR)';
 
             AXES.forEach(ax => {
                 $('b' + ax).placeholder = u.len;
@@ -806,9 +924,33 @@
         const axisInputs = [];
         AXES.forEach(ax => axisInputs.push('d' + ax + '-col', 'lo-' + ax + '-col', 'hi-' + ax + '-col'));
 
-        ['grade-col', 'grade-unit', 'domain-val', 'mass-col', 'vol-col', 'density-col']
+        ['domain-val', 'mass-col', 'vol-col', 'density-col']
             .concat(axisInputs)
             .forEach(id => $(id).addEventListener('change', rebuildAndRender));
+
+        // A cut-off range is written in the units of the variable it was typed against, so
+        // it means nothing once that variable changes — $/t bounds left over on a g/t curve
+        // leave a blank chart with correct cards, which reads as broken. The tonnage boxes
+        // survive: Mt is Mt whatever is plotted against it.
+        function resetGradeAxisRanges() {
+            ['rx-min', 'rx-max', 'ry2-min', 'ry2-max'].forEach(id => $(id).value = '');
+        }
+
+        $('grade-col').addEventListener('change', function() {
+            resetGradeAxisRanges();
+            rebuildAndRender();
+        });
+
+        // Changing the grade unit renames every grade/value label as well as the numbers.
+        $('grade-unit').addEventListener('change', function() {
+            resetGradeAxisRanges();
+            applyUnitLabels();
+            rebuildAndRender();
+        });
+
+        // Chart ranges are a view setting: no rebuild, not even a re-plot of the traces.
+        ['rx-min', 'rx-max', 'ry-min', 'ry-max', 'ry2-min', 'ry2-max'].forEach(id =>
+            $(id).addEventListener('input', applyChartRanges));
 
         ['bx', 'by', 'bz', 'density-default'].forEach(id =>
             $(id).addEventListener('input', rebuildAndRender));
@@ -1128,6 +1270,16 @@
             const unit = $('grade-unit').value;
             const st = massIsShortTons();
 
+            // A $/t grade prices the same ton the tonnage is counted in, so the product is
+            // already dollars in both systems — nothing to convert, only to scale.
+            if (unit === 'value') {
+                const v = Math.abs(gradeMass);
+                if (v >= 1e9) return { val: '$' + fmt(gradeMass / 1e9, 2), unit: 'billion' };
+                if (v >= 1e6) return { val: '$' + fmt(gradeMass / 1e6, 2), unit: 'million' };
+                if (v >= 1e3) return { val: '$' + fmt(gradeMass / 1e3, 1), unit: 'thousand' };
+                return { val: '$' + fmt(gradeMass, 0), unit: 'total' };
+            }
+
             if (unit === 'gpt') {
                 const grams = gradeMass * (st ? T_PER_ST : 1);   // -> grams per metric tonne basis
                 const oz = grams / 31.1034768;
@@ -1211,6 +1363,7 @@
                 renderNotices();
                 Plotly.purge('chart-container');
                 chartReady = false;
+                lastCurve = null;
                 return;
             }
 
@@ -1238,6 +1391,44 @@
             $('cutoff-val').innerText = parseFloat(slider.value).toFixed(dp);
         }
 
+        // Chart axis ranges. A blank end is scaled from the plotted data rather than left
+        // to Plotly, so half a range ("show me up to 40 Mt") is a usable instruction.
+        // Reversed entries are ordered rather than honoured — an upside-down axis is a typo,
+        // not a request.
+        function axisRange(minId, maxId, dataMax) {
+            const lo = parseFloat($(minId).value), hi = parseFloat($(maxId).value);
+            const hasLo = isFinite(lo), hasHi = isFinite(hi);
+            if (!hasLo && !hasHi) return null;             // leave it to Plotly
+
+            const a = hasLo ? lo : 0;
+            const b = hasHi ? hi : (dataMax > 0 ? dataMax * 1.05 : a + 1);
+            if (a === b) return null;
+            return [Math.min(a, b), Math.max(a, b)];
+        }
+
+        function axisRanges() {
+            const maxOf = arr => (arr && arr.length) ? arr.reduce((m, v) => v > m ? v : m, 0) : 0;
+            const d = lastCurve;
+            return {
+                xaxis:  axisRange('rx-min',  'rx-max',  maxOf(d && d.xs)),
+                yaxis:  axisRange('ry-min',  'ry-max',  maxOf(d && d.tonnes)),
+                yaxis2: axisRange('ry2-min', 'ry2-max', maxOf(d && d.gradesY))
+            };
+        }
+
+        // View-only, so this relayouts the existing plot — the traces and the metric cards
+        // are untouched, exactly as with the cut-off marker.
+        function applyChartRanges() {
+            if (!chartReady) return;
+            const r = axisRanges();
+            const update = {};
+            Object.keys(r).forEach(ax => {
+                if (r[ax]) { update[ax + '.autorange'] = false; update[ax + '.range'] = r[ax]; }
+                else       { update[ax + '.autorange'] = true; }
+            });
+            Plotly.relayout('chart-container', update);
+        }
+
         function curveData() {
             const steps = 60;
             const top = gradePercentile(0.99);
@@ -1256,7 +1447,8 @@
 
         function renderCurve() {
             const d = curveData();
-            const unitLabel = GRADE_UNITS[$('grade-unit').value].suffix;
+            lastCurve = d;
+            const unitLabel = gradeUnitSuffix();
             const bigMass = units().massAbbr[2];   // curveData() reports tonnage in millions
             const gradeCol = $('grade-col').value;
 
@@ -1270,24 +1462,27 @@
                 },
                 {
                     x: d.xs, y: d.gradesY,
-                    name: 'Avg Grade' + (unitLabel ? ' (' + unitLabel + ')' : ''),
+                    name: 'Avg ' + gradeNoun() + (unitLabel ? ' (' + unitLabel + ')' : ''),
                     yaxis: 'y2',
                     type: 'scatter', mode: 'lines',
                     line: { color: '#0d6efd', width: 3, dash: 'dash' },
-                    hovertemplate: '%{y:,.3f} ' + unitLabel + '<extra>Avg grade</extra>'
+                    hovertemplate: '%{y:,.3f} ' + unitLabel + '<extra>Avg ' + gradeNoun().toLowerCase() + '</extra>'
                 }
             ];
 
+            const noun = gradeNoun();
+            const ranges = axisRanges();
+
             const layout = {
-                title: { text: 'Grade-Tonnage Curve — ' + gradeCol },
-                xaxis: { title: { text: 'Cut-off Grade' + (unitLabel ? ' (' + unitLabel + ')' : '') } },
+                title: { text: noun + '-Tonnage Curve — ' + gradeCol },
+                xaxis: { title: { text: 'Cut-off ' + noun + (unitLabel ? ' (' + unitLabel + ')' : '') } },
                 yaxis: {
                     title: { text: 'Tonnage (' + bigMass + ')', font: { color: '#dc3545' } },
                     tickfont: { color: '#dc3545' },
                     rangemode: 'tozero'
                 },
                 yaxis2: {
-                    title: { text: 'Average Grade' + (unitLabel ? ' (' + unitLabel + ')' : ''), font: { color: '#0d6efd' } },
+                    title: { text: 'Average ' + noun + (unitLabel ? ' (' + unitLabel + ')' : ''), font: { color: '#0d6efd' } },
                     tickfont: { color: '#0d6efd' },
                     overlaying: 'y',
                     side: 'right',
@@ -1298,6 +1493,13 @@
                 hovermode: 'x unified',
                 legend: { orientation: 'h', y: -0.18 }
             };
+
+            // A user range wins over the automatic fit; a blank pair leaves the axis to fit
+            // itself, so clearing the boxes restores the default view.
+            Object.keys(ranges).forEach(ax => {
+                if (ranges[ax]) layout[ax].range = ranges[ax];
+                else layout[ax].autorange = true;
+            });
 
             if (chartReady) {
                 Plotly.react('chart-container', traces, layout, { responsive: true });
@@ -1322,7 +1524,7 @@
             const cutoff = parseFloat($('cutoff-slider').value) || 0;
             const r = queryCutoff(cutoff);
             const dp = gradeDp();
-            const unitLabel = GRADE_UNITS[$('grade-unit').value].suffix;
+            const unitLabel = gradeUnitSuffix();
 
             $('m-count').innerText = r.count.toLocaleString();
             $('m-count-sub').innerText = 'of ' + model.n.toLocaleString() + ' modelled';

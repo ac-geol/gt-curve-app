@@ -28,6 +28,7 @@ Everything else is optional and auto-detected where possible.
 | Column | Required | Notes |
 |---|---|---|
 | Grade | Yes | Any numeric column — `AU_GPT`, `CU_PCT`, `NI`, … Pick the units in the sidebar. |
+| Value / NSR | — | A `$/t` column — `NSR`, `VALUE26`, `PLAN26`, `STRAT26` — can be used as the grade, giving a value-tonnage curve. The price-deck year suffix is understood. |
 | Tonnage source | Yes | One of: per-block dimension columns, a fixed cell size, a volume column, or a mass column. |
 | `X`, `Y`, `Z` | No | Used to infer the parent cell size on regular models. |
 | `DX`, `DY`, `DZ` | No | Per-block dimensions. Auto-detected; also matches `XINC`/`XSIZE`/`XLENGTH`. |
@@ -74,6 +75,16 @@ The four cards are all reported **above the current cut-off**, except the block 
 also shows the total modelled. Contained metal is unit-aware: g/t reports troy ounces
 (koz/Moz), while % and ppm report tonnes of metal.
 
+Picking **$/t (net value / NSR)** as the grade unit switches the cut-off variable to dollars:
+the curve, the average and the cards read as value per tonne, and *contained metal* becomes
+the total dollar value above the cut-off. In imperial the same column is read as $/ton, in
+step with the tonnage.
+
+**Chart axes** can be pinned with the min/max boxes under *Chart Axes*. Leave an end blank and
+it scales to the data. These only change the view — nothing about the curve or the cards
+depends on them. Changing the grade column or its units clears the cut-off and average-grade
+bounds, since they were typed in the old variable's units; the tonnage bounds stay put.
+
 The cut-off slider runs from zero to the 99th percentile of grade, so a single freak
 high-grade block can't stretch the axis. Dragging it is instant regardless of model size —
 the curve is precomputed, so the slider only moves a marker and updates four numbers.
@@ -97,7 +108,9 @@ out of memory. If you routinely work above that, filter or composite the model b
   truly self-contained. On a locked-down network or offline at site, the page will load but
   the chart won't render. Inlining the libraries would fix this.
 - **No partial-block / percent-in-model factor.** Blocks are treated as wholly in or out.
-- **Single element at a time.** No metal-equivalent or multi-element curves.
+- **Single variable at a time.** No metal-equivalent or multi-element curves computed in the
+  app — though a `$/t` NSR column from the block model can be charted directly, which is how
+  polymetallic cut-offs are usually expressed.
 - Grade and tonnage columns aren't checked for being the same column.
 
 ## Contributing
